@@ -41,8 +41,26 @@ function App() {
 					content: msg.content
 				})));
 			}
+			// Load filename from session data only if it has vector store
+			console.log('Chat history response:', response.data);
+			if (response.data.filename && response.data.filename !== 'General Chat' && response.data.has_vector_store) {
+				setFilename(response.data.filename);
+				console.log('Set filename:', response.data.filename);
+			} else {
+				console.log('Not setting filename:', {
+					filename: response.data.filename,
+					has_vector_store: response.data.has_vector_store
+				});
+			}
 		} catch (error) {
-
+			if (error.response?.status === 404) {
+				// Session doesn't exist on backend, clear frontend
+				console.log('Session not found on backend, clearing frontend state');
+				setSessionId(null);
+				setFilename('');
+				setMessages([]);
+				localStorage.removeItem('chatbot_session_id');
+			}
 		}
 	};
 
@@ -57,24 +75,29 @@ function App() {
 		const formData = new FormData();
 		formData.append('file', file);
 		// Include existing session ID to preserve chat history
+		console.log('Current sessionId before upload:', sessionId);
 		if (sessionId) {
 			formData.append('session_id', sessionId);
+			console.log('Added sessionId to form:', sessionId);
+		} else {
+			console.log('No sessionId found, will create new session');
 		}
 		try {
 			const response = await axios.post(`${API_BASE}/upload-pdf`, formData, {
 				headers: { 'Content-Type': 'multipart/form-data' }
 			});
+			console.log('Upload response:', response.data);
 			setSessionId(response.data.session_id);
 			setFilename(response.data.filename);
 			// Save session ID to localStorage
 			localStorage.setItem('chatbot_session_id', response.data.session_id);
+			console.log('Updated sessionId to:', response.data.session_id);
 			// Add system message without clearing existing messages
 			setMessages(prev => [...prev, {
 				role: 'system',
-				content: `PDF "${response.data.filename}" uploaded successfully! You can now ask questions about the document.`
+				content: `PDF "${response.data.filename}" uploaded successfully! You can now ask questions about your documents.`
 			}]);
 		} catch (error) {
-
 			let errorMsg = error.response?.data?.detail || error.message;
 			if (error.response?.status === 429) {
 				errorMsg = 'You have exceeded your Gemini API quota. Please check your plan or try again later.';
@@ -123,6 +146,11 @@ function App() {
 		}
 		setIsLoading(true);
 		setMessages(prev => [...prev, { role: 'user', content: trimmedMessage }]);
+		
+		// Add thinking message
+		const thinkingId = Date.now();
+		setMessages(prev => [...prev, { role: 'assistant', content: 'Thinking...', isThinking: true, id: thinkingId }]);
+		
 		setInputMessage('');
 		try {
 			const response = await axios.post(`${API_BASE}/chat`, {
@@ -130,24 +158,48 @@ function App() {
 				message: trimmedMessage
 			});
 
-			setMessages(prev => [...prev, { role: 'assistant', content: response.data.response }]);
+			// Replace thinking message with actual response
+			setMessages(prev => prev.map(msg => 
+				msg.id === thinkingId ? { role: 'assistant', content: response.data.response } : msg
+			));
 		} catch (error) {
 			let errorMsg = 'Error: Unable to get response.';
 			if (error.response?.status === 429) {
 				errorMsg = 'You have exceeded your Gemini API quota. Please check your plan or try again later.';
 			}
-			setMessages(prev => [...prev, { role: 'assistant', content: errorMsg }]);
+			// Replace thinking message with error
+			setMessages(prev => prev.map(msg => 
+				msg.id === thinkingId ? { role: 'assistant', content: errorMsg } : msg
+			));
 		}
 		setIsLoading(false);
 	};
 
-	const handleReset = () => {
+	const handleReset = async () => {
+		// Delete session from backend if it exists
+		if (sessionId) {
+			try {
+				await axios.delete(`${API_BASE}/session/${sessionId}`);
+				console.log('Session deleted from backend');
+			} catch (error) {
+				console.log('Session deletion failed or session not found');
+			}
+		}
+		
+		// Clear frontend state
 		setSessionId(null);
 		setFilename('');
 		setMessages([]);
 		setInputMessage('');
-		// Clear localStorage
 		localStorage.removeItem('chatbot_session_id');
+	};
+
+	const handleClearSession = () => {
+		// Force create new session
+		setSessionId(null);
+		setFilename('');
+		localStorage.removeItem('chatbot_session_id');
+		console.log('Session cleared, next upload will create new session');
 	};
 
 	return (
@@ -185,7 +237,15 @@ function App() {
 					) : (
 						messages.map((msg, idx) => (
 							<div key={idx} className={`message ${msg.role}`}>
-								<div className="message-content">{msg.content}</div>
+								<div className="message-content">
+									{msg.isThinking ? (
+										<span className="thinking-dots">
+											Thinking<span className="dots">...</span>
+										</span>
+									) : (
+										msg.content
+									)}
+								</div>
 							</div>
 						))
 					)}
@@ -205,7 +265,7 @@ function App() {
 				</div>
 				{filename && (
 					<div className="current-file-info">
-						<span>Current PDF: <b>{filename}</b></span>
+						<span>Current Documents: <b>{filename}</b></span>
 						<button className="reset-btn" onClick={handleReset}>Reset</button>
 					</div>
 				)}

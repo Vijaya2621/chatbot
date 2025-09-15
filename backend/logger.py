@@ -11,7 +11,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(f"logs/chatbot_{datetime.now().strftime('%Y%m%d')}.log"),
-        logging.StreamHandler()  # Also log to console
+        logging.StreamHandler()
     ]
 )
 

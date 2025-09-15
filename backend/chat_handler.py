@@ -103,7 +103,7 @@ class ChatHandler:
         
         # General personal info search
         relevant_info = []
-        for msg in reversed(chat_history[-10:]):  # Last 10 messages
+        for msg in reversed(chat_history[-10:]):
             if msg["role"] == "user" and any(word in msg["content"].lower() for word in ["my", "i am", "i work", "i like", "i live"]):
                 relevant_info.append(msg["content"])
         
@@ -117,16 +117,21 @@ class ChatHandler:
     def _handle_document_question(self, message: str, session: dict) -> str:
         """Handle questions about uploaded document"""
         try:
-            docs = session["vector_store"].similarity_search(message, k=3)
+            docs = session["vector_store"].similarity_search(message, k=4)
             if docs:
-                context = "\n".join([doc.page_content for doc in docs[:2]])
-                prompt = f"Context from document: {context}\n\nQuestion: {message}\n\nAnswer based on the document:"
+                # Get more context for multi-document scenarios
+                context = "\n\n".join([f"Document excerpt {i+1}: {doc.page_content}" for i, doc in enumerate(docs[:3])])
+                
+                # Include document names in prompt
+                doc_names = session.get("filename", "uploaded documents")
+                prompt = f"Context from {doc_names}:\n{context}\n\nQuestion: {message}\n\nAnswer based on the documents (mention which document if relevant):"
+                
                 return self.llm.invoke(prompt)
             else:
-                return "I couldn't find relevant information in the uploaded document."
+                return "I couldn't find relevant information in the uploaded documents."
         except Exception as e:
             chat_logger.error(f"Document search error: {e}")
-            return "I couldn't search the document. Please try again."
+            return "I couldn't search the documents. Please try again."
     
     def _handle_general_question(self, message: str, session: dict) -> str:
         """Handle general AI questions"""
@@ -135,7 +140,7 @@ class ChatHandler:
         recent_context = ""
         
         if len(chat_history) > 1:
-            recent_messages = chat_history[-6:]  # Last 3 exchanges
+            recent_messages = chat_history[-6:]
             context_parts = []
             for msg in recent_messages:
                 if msg["role"] == "user":

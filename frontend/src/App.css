@@ -205,3 +205,24 @@ body {
   font-weight: 500;
 }
 
+/* Thinking animation */
+.thinking-dots .dots {
+  animation: thinking 1.5s infinite;
+}
+
+@keyframes thinking {
+  0%, 20% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.thinking-dots {
+  color: #666;
+  font-style: italic;
+}

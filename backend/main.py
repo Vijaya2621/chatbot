@@ -1,8 +1,12 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
 import os
+import json
+import uvicorn
+import threading
+import time
 from pdf_processor import PDFProcessor
 import session_manager
 from chat_handler import ChatHandler
@@ -31,13 +35,19 @@ class ChatResponse(BaseModel):
     session_id: str
 
 @app.post("/upload-pdf")
-async def upload_pdf(file: UploadFile = File(...), session_id: str = None):
+async def upload_pdf(file: UploadFile = File(...), session_id: str = Form(None)):
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+    
+    # Log received session_id for debugging
+    main_logger.info(f"Received session_id: {session_id}")
     
     # Use existing session_id or create new one
     if not session_id:
         session_id = str(uuid.uuid4())
+        main_logger.info(f"Created new session_id: {session_id[:8]}...")
+    else:
+        main_logger.info(f"Using existing session_id: {session_id[:8]}...")
     
     try:
         # Save uploaded file
@@ -52,10 +62,10 @@ async def upload_pdf(file: UploadFile = File(...), session_id: str = None):
         vector_store = pdf_processor.process_pdf(file_path)
         
         # Update existing session or create new one (preserves chat history)
-        session_manager.update_session_with_pdf(session_id, vector_store, file.filename)
+        updated_session = session_manager.update_session_with_pdf(session_id, vector_store, file.filename)
         
         main_logger.info(f"PDF processed successfully: {file.filename} for session {session_id[:8]}...")
-        return {"session_id": session_id, "filename": file.filename}
+        return {"session_id": session_id, "filename": updated_session.get("filename", file.filename)}
     
     except Exception as e:
         main_logger.error(f"PDF processing error: {e}")
@@ -77,16 +87,37 @@ async def chat(chat_message: ChatMessage):
 
 @app.get("/chat-history/{session_id}")
 async def get_chat_history(session_id: str):
-    history = session_manager.get_chat_history(session_id)
-    if history is None:
+    session = session_manager.get_session(session_id)
+    if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return {"history": history}
+    # Check if session has vector store from JSON data
+    session_file = f"data/sessions/{session_id}.json"
+    has_vector_store = False
+    if os.path.exists(session_file):
+        try:
+            with open(session_file, 'r') as f:
+                json_data = json.load(f)
+            has_vector_store = json_data.get("has_vector_store", False)
+        except:
+            pass
+    
+    return {
+        "history": session.get("chat_history", []),
+        "filename": session.get("filename", ""),
+        "has_vector_store": has_vector_store
+    }
+
+@app.delete("/session/{session_id}")
+async def delete_session_endpoint(session_id: str):
+    try:
+        session_manager.delete_session(session_id)
+        main_logger.info(f"Session deleted: {session_id[:8]}...")
+        return {"message": "Session deleted successfully"}
+    except Exception as e:
+        main_logger.error(f"Session deletion error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting session: {str(e)}")
 
 if __name__ == "__main__":
-    import uvicorn
-    import threading
-    import time
-    
     # Start cleanup task in background
     def cleanup_task():
         while True:

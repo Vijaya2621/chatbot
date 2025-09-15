@@ -1,8 +1,11 @@
 import os
 import json
 import pickle
+import shutil
 from typing import Dict, List, Optional
 import time
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
 
 class PersistentStorage:
     def __init__(self, storage_dir="data"):
@@ -61,9 +64,6 @@ class PersistentStorage:
                 vector_path = f"{self.storage_dir}/vectors/{session_id}"
                 if os.path.exists(vector_path):
                     try:
-                        from langchain_community.embeddings import HuggingFaceEmbeddings
-                        from langchain_community.vectorstores import FAISS
-                        
                         embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
                         vector_store = FAISS.load_local(vector_path, embeddings, allow_dangerous_deserialization=True)
                         session_data["vector_store"] = vector_store
@@ -103,7 +103,6 @@ class PersistentStorage:
                         # Remove vector store if exists
                         vector_path = os.path.join(vectors_dir, session_id)
                         if os.path.exists(vector_path):
-                            import shutil
                             shutil.rmtree(vector_path)
                         
                         pass
