@@ -1,0 +1,10 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+langchain==0.1.0
+langchain-community==0.0.10
+faiss-cpu
+pypdf==4.0.1
+python-multipart==0.0.6
+python-dotenv==1.0.0
+sentence-transformers
+huggingface-hub
