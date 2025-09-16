@@ -10,7 +10,7 @@ import time
 from pdf_processor import PDFProcessor
 import session_manager
 from chat_handler import ChatHandler
-from logger import main_logger, session_logger
+from logger import main_logger
 
 app = FastAPI()
 
@@ -39,15 +39,8 @@ async def upload_pdf(file: UploadFile = File(...), session_id: str = Form(None))
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
-    # Log received session_id for debugging
-    main_logger.info(f"Received session_id: {session_id}")
-    
-    # Use existing session_id or create new one
     if not session_id:
         session_id = str(uuid.uuid4())
-        main_logger.info(f"Created new session_id: {session_id[:8]}...")
-    else:
-        main_logger.info(f"Using existing session_id: {session_id[:8]}...")
     
     try:
         # Save uploaded file
@@ -61,10 +54,10 @@ async def upload_pdf(file: UploadFile = File(...), session_id: str = Form(None))
         # Process PDF and create vector store
         vector_store = pdf_processor.process_pdf(file_path)
         
-        # Update existing session or create new one (preserves chat history)
+        # Update existing session or create new one
         updated_session = session_manager.update_session_with_pdf(session_id, vector_store, file.filename)
         
-        main_logger.info(f"PDF processed successfully: {file.filename} for session {session_id[:8]}...")
+        main_logger.info(f"PDF processed: {file.filename} for session {session_id[:8]}...")
         return {"session_id": session_id, "filename": updated_session.get("filename", file.filename)}
     
     except Exception as e:
@@ -74,10 +67,9 @@ async def upload_pdf(file: UploadFile = File(...), session_id: str = Form(None))
 @app.post("/chat")
 async def chat(chat_message: ChatMessage):
     try:
-        # Create session if it doesn't exist (for general chat without PDF)
+        # Create session if it doesn't exist
         if not session_manager.get_session(chat_message.session_id):
             session_manager.create_session(chat_message.session_id, None, "General Chat")
-            session_logger.info(f"Created new session: {chat_message.session_id[:8]}...")
         
         response = chat_handler.handle_message(chat_message.message, chat_message.session_id)
         return ChatResponse(response=response, session_id=chat_message.session_id)

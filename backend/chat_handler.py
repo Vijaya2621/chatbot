@@ -5,7 +5,11 @@ from logger import chat_logger
 
 class ChatHandler:
     def __init__(self):
-        self.llm = Ollama(model="mistral", temperature=0.7)
+        #  self.llm = Ollama(model="mistral", temperature=0.7)
+        self.llm = Ollama(
+            model="llama3",
+            temperature=0.7
+        )
     
     def handle_message(self, message: str, session_id: str) -> str:
         chat_logger.info(f"Processing message from session {session_id[:8]}...")
@@ -79,10 +83,10 @@ class ChatHandler:
                     if "my name is" in content or "i am" in content:
                         # Extract name
                         if "my name is" in content:
-                            name = content.split("my name is")[1].strip().split()[0]
+                            name = content.split("my name is")[1].strip().split()[0:2]
                         else:
-                            name = content.split("i am")[1].strip().split()[0]
-                        return f"Your name is {name}."
+                            name = content.split("i am")[1].strip().split()[0:2]
+                        return f"Your name is {' '.join(name)}."
             return "I don't know your name yet. Please tell me!"
         
         elif "age" in message_lower:
@@ -103,7 +107,7 @@ class ChatHandler:
         
         # General personal info search
         relevant_info = []
-        for msg in reversed(chat_history[-10:]):
+        for msg in reversed(chat_history[-100:]):
             if msg["role"] == "user" and any(word in msg["content"].lower() for word in ["my", "i am", "i work", "i like", "i live"]):
                 relevant_info.append(msg["content"])
         
@@ -115,43 +119,37 @@ class ChatHandler:
         return "I don't have that information about you yet. Feel free to tell me more about yourself!"
     
     def _handle_document_question(self, message: str, session: dict) -> str:
-        """Handle questions about uploaded document"""
+        """Handle questions about uploaded document using semantic search (MMR)"""
         try:
-            docs = session["vector_store"].similarity_search(message, k=4)
+            retriever = session["vector_store"].as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": 6, "fetch_k": 8}
+            )
+            docs = retriever.get_relevant_documents(message)
+
             if docs:
-                # Get more context for multi-document scenarios
-                context = "\n\n".join([f"Document excerpt {i+1}: {doc.page_content}" for i, doc in enumerate(docs[:3])])
-                
-                # Include document names in prompt
+                context = "\n\n".join([doc.page_content[:400] for doc in docs])
                 doc_names = session.get("filename", "uploaded documents")
-                prompt = f"Context from {doc_names}:\n{context}\n\nQuestion: {message}\n\nAnswer based on the documents (mention which document if relevant):"
-                
+                prompt = (
+                    f"Context from {doc_names}:\n{context}\n\n"
+                    f"Question: {message}\n\n"
+                    "Provide a detailed answer based only on the documents above. "
+                    "If the context is not sufficient, clearly say: "
+                    "\"I couldn't find relevant information in the uploaded documents.\""
+                )
                 return self.llm.invoke(prompt)
             else:
                 return "I couldn't find relevant information in the uploaded documents."
         except Exception as e:
-            chat_logger.error(f"Document search error: {e}")
+            chat_logger.error(f"Document semantic search error: {e}")
             return "I couldn't search the documents. Please try again."
     
     def _handle_general_question(self, message: str, session: dict) -> str:
         """Handle general AI questions"""
-        # Include recent chat history for context
-        chat_history = session.get("chat_history", [])
-        recent_context = ""
+        prompt = f"You are a helpful AI assistant. Provide a comprehensive and detailed answer to the user's question. Explain thoroughly with examples when relevant.\n\nUser: {message}\n\nAssistant:"
         
-        if len(chat_history) > 1:
-            recent_messages = chat_history[-6:]
-            context_parts = []
-            for msg in recent_messages:
-                if msg["role"] == "user":
-                    context_parts.append(f"User: {msg['content']}")
-                else:
-                    context_parts.append(f"Assistant: {msg['content']}")
-            recent_context = "\n".join(context_parts)
-        
-        if recent_context:
-            prompt = f"Previous conversation:\n{recent_context}\n\nUser: {message}\n\nAssistant:"
-        else:
-            prompt = f"User: {message}\n\nAssistant:"
-        
-        return self.llm.invoke(prompt)
+        try:
+            return self.llm.invoke(prompt)
+        except Exception as e:
+            chat_logger.error(f"LLM error: {e}")
+            return "I'm having trouble generating a response right now. Please try again."

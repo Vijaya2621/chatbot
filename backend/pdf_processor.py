@@ -38,7 +38,6 @@ class PDFProcessor:
             
             # Clean up uploaded file
             os.remove(file_path)
-            
             return vector_store
             
         except Exception as e:

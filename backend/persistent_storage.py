@@ -89,7 +89,7 @@ class PersistentStorage:
         
         for filename in os.listdir(sessions_dir):
             if filename.endswith('.json'):
-                session_id = filename[:-5]  # Remove .json
+                session_id = filename[:-5]
                 session_file = os.path.join(sessions_dir, filename)
                 
                 try:
