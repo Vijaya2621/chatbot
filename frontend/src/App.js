@@ -25,44 +25,31 @@ function App() {
 		scrollToBottom();
 	}, [messages]);
 
-	const loadChatHistory = async () => {
-		try {
-			const response = await axios.get(`${API_BASE}/chat-history/${sessionId}`);
-			if (response.data.history && response.data.history.length > 0) {
-				setMessages(response.data.history.map(msg => ({
-					role: msg.role,
-					content: msg.content
-				})));
-			}
-			// Load filename from session data only if it has vector store
-			console.log('Chat history response:', response.data);
-			if (response.data.filename && response.data.filename !== 'General Chat' && response.data.has_vector_store) {
-				setFilename(response.data.filename);
-				console.log('Set filename:', response.data.filename);
-			} else {
-				console.log('Not setting filename:', {
-					filename: response.data.filename,
-					has_vector_store: response.data.has_vector_store
-				});
-			}
-		} catch (error) {
-			if (error.response?.status === 404) {
-				// Session doesn't exist on backend, clear frontend
-				console.log('Session not found on backend, clearing frontend state');
-				setSessionId(null);
-				setFilename('');
-				setMessages([]);
-				localStorage.removeItem('chatbot_session_id');
-			}
-		}
-	};
-
-	// Load chat history when sessionId is available
 	useEffect(() => {
-		if (sessionId) {
-			loadChatHistory();
-		}
-	}, [sessionId, loadChatHistory]);
+		const loadChatHistory = async () => {
+			if (!sessionId) return;
+			try {
+				const response = await axios.get(`${API_BASE}/chat-history/${sessionId}`);
+				if (response.data.history && response.data.history.length > 0) {
+					setMessages(response.data.history.map(msg => ({
+						role: msg.role,
+						content: msg.content
+					})));
+				}
+				if (response.data.filename && response.data.filename !== 'General Chat' && response.data.has_vector_store) {
+					setFilename(response.data.filename);
+				}
+			} catch (error) {
+				if (error.response?.status === 404) {
+					setSessionId(null);
+					setFilename('');
+					setMessages([]);
+					localStorage.removeItem('chatbot_session_id');
+				}
+			}
+		};
+		loadChatHistory();
+	}, [sessionId]);
 
 	const handleFileUpload = async (event) => {
 		const file = event.target.files[0];
@@ -74,24 +61,16 @@ function App() {
 		setIsUploading(true);
 		const formData = new FormData();
 		formData.append('file', file);
-		// Include existing session ID to preserve chat history
-		console.log('Current sessionId before upload:', sessionId);
 		if (sessionId) {
 			formData.append('session_id', sessionId);
-			console.log('Added sessionId to form:', sessionId);
-		} else {
-			console.log('No sessionId found, will create new session');
 		}
 		try {
 			const response = await axios.post(`${API_BASE}/upload-pdf`, formData, {
 				headers: { 'Content-Type': 'multipart/form-data' }
 			});
-			console.log('Upload response:', response.data);
 			setSessionId(response.data.session_id);
 			setFilename(response.data.filename);
-			// Save session ID to localStorage
 			localStorage.setItem('chatbot_session_id', response.data.session_id);
-			console.log('Updated sessionId to:', response.data.session_id);
 			// Add system message without clearing existing messages
 			setMessages(prev => [...prev, {
 				role: 'system',
@@ -180,9 +159,8 @@ function App() {
 		if (sessionId) {
 			try {
 				await axios.delete(`${API_BASE}/session/${sessionId}`);
-				console.log('Session deleted from backend');
 			} catch (error) {
-				console.log('Session deletion failed or session not found');
+				// Session deletion failed
 			}
 		}
 		
