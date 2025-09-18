@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || 'https://a904c4b23415.ngrok-free.app';
+const API_BASE = process.env.REACT_APP_API_BASE_URL || 'https://09b50216cfcd.ngrok-free.app';
 
 function App() {
 	console.log('App component rendering...');
