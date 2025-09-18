@@ -25,13 +25,6 @@ function App() {
 		scrollToBottom();
 	}, [messages]);
 
-	// Load chat history when sessionId is available
-	useEffect(() => {
-		if (sessionId) {
-			loadChatHistory();
-		}
-	}, [sessionId]);
-
 	const loadChatHistory = async () => {
 		try {
 			const response = await axios.get(`${API_BASE}/chat-history/${sessionId}`);
@@ -63,6 +56,13 @@ function App() {
 			}
 		}
 	};
+
+	// Load chat history when sessionId is available
+	useEffect(() => {
+		if (sessionId) {
+			loadChatHistory();
+		}
+	}, [sessionId, loadChatHistory]);
 
 	const handleFileUpload = async (event) => {
 		const file = event.target.files[0];
@@ -194,13 +194,7 @@ function App() {
 		localStorage.removeItem('chatbot_session_id');
 	};
 
-	const handleClearSession = () => {
-		// Force create new session
-		setSessionId(null);
-		setFilename('');
-		localStorage.removeItem('chatbot_session_id');
-		console.log('Session cleared, next upload will create new session');
-	};
+
 
 	return (
 		<div className="container">
